@@ -1,0 +1,86 @@
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+import schedule
+import time
+
+# Stock Scanner Function
+def stock_scanner(ticker_list, return_threshold=0, years=7):
+    """
+    Scans a list of stocks and finds those with a return close to the given threshold over the past number of years.
+    
+    Parameters:
+    ticker_list (list): List of stock tickers to scan.
+    return_threshold (float): Target return percentage (default 0%).
+    years (int): Number of years to check (default 7 years).
+    
+    Returns:
+    pd.DataFrame: DataFrame of stocks meeting the criteria.
+    """
+    results = []
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=years * 365)
+
+    for ticker in ticker_list:
+        try:
+            # Download historical data
+            stock_data = yf.download(ticker, start=start_date, end=end_date)
+            
+            if not stock_data.empty:
+                start_price = stock_data['Adj Close'].iloc[0]
+                end_price = stock_data['Adj Close'].iloc[-1]
+                stock_return = ((end_price - start_price) / start_price) * 100
+                
+                # Check if return is within the threshold (e.g., 0%)
+                if abs(stock_return - return_threshold) < 1e-2:  # Small tolerance for floating point comparisons
+                    results.append({
+                        'Ticker': ticker,
+                        'Start Price': start_price,
+                        'End Price': end_price,
+                        'Return (%)': stock_return,
+                        'Start Date': start_date.date(),
+                        'End Date': end_date.date()
+                    })
+        except Exception as e:
+            print(f"Error processing {ticker}: {e}")
+
+    return pd.DataFrame(results)
+
+# Function to run the scanner with dynamic parameters
+def run_scanner():
+    """
+    This function prompts the user to enter parameters for the stock scanner 
+    and prints the results for stocks that match the criteria.
+    """
+    tickers = input("Enter stock tickers separated by commas: ").split(',')
+    return_threshold = float(input("Enter target return percentage (e.g., 0 for 0% return): "))
+    years = int(input("Enter the number of years to scan: "))
+
+    result_df = stock_scanner(tickers, return_threshold, years)
+    
+    if result_df.empty:
+        print(f"No stocks found with {return_threshold}% returns over the last {years} years.")
+    else:
+        print(f"Stocks with approximately {return_threshold}% return over the last {years} years:")
+        print(result_df)
+
+# Schedule function to run after market close
+def schedule_scanner():
+    """
+    Schedules the scanner to run every day after markets close (4:00 PM EST).
+    """
+    # Schedule the scanner to run at 4:30 PM every day (assuming market close is at 4 PM)
+    schedule.every().day.at("16:30").do(run_scanner)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Wait one minute between checks
+
+if __name__ == "__main__":
+    print("Stock Scanner Program")
+    # Run the scanner immediately once for testing purposes
+    run_scanner()
+
+    # Schedule it to run daily
+    print("\nScheduling the scanner to run daily after market close...")
+    schedule_scanner()
